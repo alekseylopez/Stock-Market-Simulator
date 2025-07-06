@@ -3,6 +3,7 @@
 
 #include <string>
 #include <chrono>
+#include <atomic>
 
 namespace simulator
 {
@@ -36,7 +37,7 @@ struct MarketData
     Price ask;
 
     MarketData(const Symbol& sym, Price p, Quantity v, Timestamp ts):
-        symbol(sym), price(p), volume(v), timestamp(ts), bid(p - 0.01), ask(p + 0.01) {}
+        symbol(sym), price(p), volume(v), timestamp(ts), bid(p * 0.999), ask(p * 1.001) {}
 };
 
 struct Order
@@ -53,7 +54,7 @@ struct Order
     Order(const ParticipantId& p_id, const Symbol& sym, OrderSide s, Quantity qty, OrderType t = OrderType::MARKET, Price p = 0.0):
         participant_id(p_id), symbol(sym), side(s), quantity(qty), type(t), price(p)
     {
-        static int counter = 0;
+        static std::atomic<int> counter{ 0 };
 
         id = "ORDER_" + std::to_string(++counter);
         timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
