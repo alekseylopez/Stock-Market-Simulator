@@ -1,5 +1,7 @@
 #include "order_book.hpp"
 
+#include <algorithm>
+
 namespace simulator
 {
 
@@ -11,12 +13,32 @@ void OrderBook::set_trade_callback(TradeCallback callback)
     trade_callback_ = callback;
 }
 
-void OrderBook::add_order(const Order& order)
+void OrderBook::set_rejection_callback(OrderRejectionCallback callback)
 {
+    rejection_callback_ = callback;
+}
+
+void OrderBook::set_portfolio(std::shared_ptr<Portfolio> portfolio)
+{
+    portfolio_ = portfolio;
+}
+
+bool OrderBook::add_order(const Order& order)
+{
+    if(!validate_order(order))
+    {
+        if(rejection_callback_)
+            rejection_callback_(order, "Insufficient funds or position for participant: " + order.participant_id);
+
+        return false;
+    }
+
     if(order.type == OrderType::MARKET)
-        execute_market_order(order);
+        return execute_market_order(order);
     else
         add_limit_order(order);
+    
+    return true;
 }
 
 Price OrderBook::get_bid_price() const
@@ -37,17 +59,31 @@ Price OrderBook::get_mid_price() const
     return (bid > 0 && ask > 0) ? (bid + ask) / 2.0 : 0.0;
 }
 
-void OrderBook::execute_market_order(const Order& order)
+void OrderBook::update_market_price(Price price)
 {
-    if(order.side == OrderSide::BUY)
-        execute_buy_market_order(order);
-    else
-        execute_sell_market_order(order);
+    current_market_price_ = price;
 }
 
-void OrderBook::execute_buy_market_order(const Order& order)
+bool OrderBook::execute_market_order(const Order& order)
 {
+    if(order.side == OrderSide::BUY)
+        return execute_buy_market_order(order);
+    else
+        return execute_sell_market_order(order);
+}
+
+bool OrderBook::execute_buy_market_order(const Order& order)
+{
+    if(sell_orders_.empty())
+    {
+        if(rejection_callback_)
+            rejection_callback_(order, "No liquidity available");
+        
+        return false;
+    }
+
     Quantity remaining = order.quantity;
+    Order modified_order = order;
 
     while(remaining > 0 && !sell_orders_.empty())
     {
@@ -57,12 +93,8 @@ void OrderBook::execute_buy_market_order(const Order& order)
         Quantity trade_quantity = std::min(remaining, sell_order.quantity);
 
         // create trade
-        if(trade_callback_)
-        {
-            auto timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
-
-            trade_callback_(Trade(order.id, sell_order.id, symbol_, trade_quantity, price, timestamp));
-        }
+        modified_order.quantity = trade_quantity;
+        execute_trade(modified_order, sell_order, trade_quantity, price);
 
         remaining -= trade_quantity;
         sell_order.quantity -= trade_quantity;
@@ -75,11 +107,22 @@ void OrderBook::execute_buy_market_order(const Order& order)
                 sell_orders_.erase(sell_orders_.begin());
         }
     }
+
+    return true;
 }
 
-void OrderBook::execute_sell_market_order(const Order& order)
+bool OrderBook::execute_sell_market_order(const Order& order)
 {
+    if(buy_orders_.empty())
+    {
+        if(rejection_callback_)
+            rejection_callback_(order, "No liquidity available");
+        
+        return false;
+    }
+
     Quantity remaining = order.quantity;
+    Order modified_order = order;
 
     while(remaining > 0 && !buy_orders_.empty())
     {
@@ -89,12 +132,8 @@ void OrderBook::execute_sell_market_order(const Order& order)
         Quantity trade_quantity = std::min(remaining, buy_order.quantity);
 
         // create trade
-        if(trade_callback_)
-        {
-            auto timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
-
-            trade_callback_(Trade(order.id, buy_order.id, symbol_, trade_quantity, price, timestamp));
-        }
+        modified_order.quantity = trade_quantity;
+        execute_trade(buy_order, modified_order, trade_quantity, price);
 
         remaining -= trade_quantity;
         buy_order.quantity -= trade_quantity;
@@ -107,6 +146,8 @@ void OrderBook::execute_sell_market_order(const Order& order)
                 buy_orders_.erase(buy_orders_.begin());
         }
     }
+
+    return true;
 }
 
 void OrderBook::add_limit_order(const Order& order)
@@ -135,12 +176,7 @@ void OrderBook::match_orders()
             Price trade_price = best_ask; // improvement for buyer
 
             // create trade
-            if(trade_callback_)
-            {
-                auto timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
-
-                trade_callback_(Trade(buy_order.id, sell_order.id, symbol_, trade_quantity, trade_price, timestamp));
-            }
+            execute_trade(buy_order, sell_order, trade_quantity, trade_price);
 
             buy_order.quantity -= trade_quantity;
             sell_order.quantity -= trade_quantity;
@@ -166,6 +202,58 @@ void OrderBook::match_orders()
             break;
         }
     }
+}
+
+void OrderBook::execute_trade(const Order& buyer_order, const Order& seller_order, Quantity quantity, Price price)
+{
+    auto timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
+
+    Trade trade(buyer_order.id, seller_order.id, symbol_, quantity, price, timestamp);
+
+    if(portfolio_)
+    {
+        portfolio_->execute_trade(buyer_order.participant_id, trade, OrderSide::BUY);
+        portfolio_->execute_trade(seller_order.participant_id, trade, OrderSide::SELL);
+    }
+
+    if(trade_callback_)
+        trade_callback_(trade);
+}
+
+bool OrderBook::validate_order(const Order& order) const
+{
+    if(!portfolio_)
+        return true;
+    
+    if(order.side == OrderSide::BUY)
+        return validate_buy_order(order);
+    else
+        return validate_sell_order(order);
+}
+
+bool OrderBook::validate_buy_order(const Order& order) const
+{
+    Price execution_price = estimate_execution_price(order);
+
+    if(execution_price == 0.0)
+        return order.type == OrderType::LIMIT;
+    
+    Price price_to_check = (order.type == OrderType::MARKET) ? execution_price : order.price;
+    
+    return portfolio_->can_buy(order.participant_id, order.symbol, order.quantity, price_to_check);
+}
+
+bool OrderBook::validate_sell_order(const Order& order) const
+{
+    return portfolio_->can_sell(order.participant_id, order.symbol, order.quantity);
+}
+
+Price OrderBook::estimate_execution_price(const Order& order) const
+{
+    if(order.side == OrderSide::BUY)
+        return sell_orders_.empty() ? current_market_price_ : sell_orders_.begin()->first;
+    else
+        return buy_orders_.empty() ? current_market_price_ : buy_orders_.rbegin()->first;
 }
 
 }

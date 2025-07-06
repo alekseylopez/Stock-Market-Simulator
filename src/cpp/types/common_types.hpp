@@ -12,6 +12,7 @@ using Quantity = int;
 using OrderId = std::string;
 using Symbol = std::string;
 using Timestamp = std::chrono::milliseconds;
+using ParticipantId = std::string;
 
 enum class OrderType
 {
@@ -41,6 +42,7 @@ struct MarketData
 struct Order
 {
     OrderId id;
+    ParticipantId participant_id;
     Symbol symbol;
     OrderType type;
     OrderSide side;
@@ -48,8 +50,8 @@ struct Order
     Price price;
     Timestamp timestamp;
 
-    Order(const Symbol& sym, OrderSide s, Quantity qty, OrderType t = OrderType::MARKET, Price p = 0.0):
-        symbol(sym), side(s), quantity(qty), type(t), price(p)
+    Order(const ParticipantId& p_id, const Symbol& sym, OrderSide s, Quantity qty, OrderType t = OrderType::MARKET, Price p = 0.0):
+        participant_id(p_id), symbol(sym), side(s), quantity(qty), type(t), price(p)
     {
         static int counter = 0;
 
