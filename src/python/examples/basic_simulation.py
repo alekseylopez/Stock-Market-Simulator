@@ -14,6 +14,7 @@ from simulator.strategies.momentum import MomentumStrategy
 
 def print_portfolio_summary(engine):
     """Print portfolio summary"""
+
     print("\n" + "="*60)
     print("PORTFOLIO SUMMARY")
     print("="*60)
@@ -28,6 +29,7 @@ def print_portfolio_summary(engine):
 
 def print_market_summary(engine):
     """Print market summary"""
+
     print("\n" + "="*60)
     print("MARKET SUMMARY")
     print("="*60)
@@ -43,6 +45,7 @@ def print_market_summary(engine):
 
 def print_trade_history(engine):
     """Print trade history"""
+
     print("\n" + "="*60)
     print("TRADE HISTORY")
     print("="*60)
@@ -55,6 +58,51 @@ def print_trade_history(engine):
     for trade in trades:
         print(f"  {trade.timestamp}: {trade.buyer_id} bought {trade.quantity} {trade.symbol} "
               f"from {trade.seller_id} at ${trade.price:.2f}")
+
+def print_performance_metrics(engine, participants):
+    """Calculate performance metrics"""
+
+    print("\n" + "="*60)
+    print("PERFORMANCE METRICS")
+    print("="*60)
+    
+    summary = engine.get_portfolio_summary()
+    for participant_id, data in summary.items():
+        if not participant_id[0:14] == "__market_maker":
+            initial_value = participants[participant_id]
+            final_value = data['portfolio_value']
+            returns = (final_value - initial_value) / initial_value * 100
+            print(f"\n{participant_id}:")
+            print(f"  Initial Value: ${initial_value:.2f}")
+            print(f"  Final Value: ${final_value:.2f}")
+            print(f"  Returns: {returns:.2f}%")
+            print(f"  Total Trades: {len([t for t in engine.get_trade_history() if t.buy_order_id == participant_id or t.sell_order_id == participant_id])}")
+
+def print_market_maker_statistics(engine):
+    """Print market maker statistics"""
+
+    print("\n" + "="*60)
+    print("MARKET MAKER STATISTICS")
+    print("="*60)
+    
+    # get market maker strategy
+    market_maker_strategies = {}
+    for strategy in engine.strategies:
+        if strategy.participant_id[0:14] == "__market_maker":
+            market_maker_strategies[strategy.participant_id] = strategy
+    
+    for id, market_maker_strategy in market_maker_strategies.items():
+        mm_stats = market_maker_strategy.get_market_making_stats()
+        print("\nStats for " + id + ":")
+        for symbol, stats in mm_stats.items():
+            print(f"{symbol}:")
+            print(f"  Position: {stats['position']}")
+            print(f"  Total Trades: {stats['total_trades']}")
+            print(f"  Buy Trades: {stats['buy_trades']}")
+            print(f"  Sell Trades: {stats['sell_trades']}")
+            print(f"  Avg Buy Price: ${stats['avg_buy_price']:.2f}")
+            print(f"  Avg Sell Price: ${stats['avg_sell_price']:.2f}")
+            print(f"  Spread Captured: ${stats['spread_captured']:.2f}")
 
 def main():
     print("Starting Momentum Strategy Simulation")
@@ -93,7 +141,7 @@ def main():
         participant_id="momentum_trader_2", 
         symbols=symbols,
         lookback_period=10,
-        momentum_threshold=0.025,  # 2.5% threshold
+        momentum_threshold=0.00005,  # .005% threshold
         position_size=15
     )
     
@@ -152,47 +200,10 @@ def main():
     print_portfolio_summary(engine)
     print_market_summary(engine)
     print_trade_history(engine)
-    
-    # calculate performance metrics
-    print("\n" + "="*60)
-    print("PERFORMANCE METRICS")
-    print("="*60)
-    
-    summary = engine.get_portfolio_summary()
-    for participant_id, data in summary.items():
-        if participant_id[0:14] != "__market_maker":  # skip market maker
-            initial_value = participants[participant_id]
-            final_value = data['portfolio_value']
-            returns = (final_value - initial_value) / initial_value * 100
-            print(f"\n{participant_id}:")
-            print(f"  Initial Value: ${initial_value:.2f}")
-            print(f"  Final Value: ${final_value:.2f}")
-            print(f"  Returns: {returns:.2f}%")
-            print(f"  Total Trades: {len([t for t in engine.get_trade_history() if t.buy_order_id == participant_id or t.sell_order_id == participant_id])}")
-    
-    # print market maker statistics
-    print("\n" + "="*60)
-    print("MARKET MAKER STATISTICS")
-    print("="*60)
-    
-    # get market maker strategy
-    market_maker_strategies = {}
-    for strategy in engine.strategies:
-        if strategy.participant_id[0:14] == "__market_maker":
-            market_maker_strategies[strategy.participant_id] = strategy
-    
-    for id, market_maker_strategy in market_maker_strategies.items():
-        mm_stats = market_maker_strategy.get_market_making_stats()
-        print("\nStats for " + id + ":")
-        for symbol, stats in mm_stats.items():
-            print(f"{symbol}:")
-            print(f"  Position: {stats['position']}")
-            print(f"  Total Trades: {stats['total_trades']}")
-            print(f"  Buy Trades: {stats['buy_trades']}")
-            print(f"  Sell Trades: {stats['sell_trades']}")
-            print(f"  Avg Buy Price: ${stats['avg_buy_price']:.2f}")
-            print(f"  Avg Sell Price: ${stats['avg_sell_price']:.2f}")
-            print(f"  Spread Captured: ${stats['spread_captured']:.2f}")
+
+    # participant statistics
+    print_performance_metrics(engine, participants)
+    print_market_maker_statistics(engine)
 
 if __name__ == "__main__":
     main()
