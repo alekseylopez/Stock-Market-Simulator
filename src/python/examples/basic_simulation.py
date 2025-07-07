@@ -6,12 +6,11 @@ import time
 import sys
 import os
 
-# Add the project root to the Python path
+# add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from simulator import SimulationEngine
 from simulator.strategies.momentum import MomentumStrategy
-from simulator.strategies.market_maker import MarketMakerStrategy
 
 def print_portfolio_summary(engine):
     """Print portfolio summary"""
@@ -54,17 +53,17 @@ def print_trade_history(engine):
         return
     
     for trade in trades:
-        print(f"  {trade.timestamp}: {trade.buyer_id} bought {trade.quantity} {trade.symbol} "
-              f"from {trade.seller_id} at ${trade.price:.2f}")
+        print(f"  {trade.timestamp}: {trade.buy_order_id} bought {trade.quantity} {trade.symbol} "
+              f"from {trade.sell_order_id} at ${trade.price:.2f}")
 
 def main():
     print("Starting Momentum Strategy Simulation")
     print("="*60)
     
-    # Create simulation engine
+    # create simulation engine
     engine = SimulationEngine()
     
-    # Add symbols to trade
+    # add symbols to trade
     symbols = ["AAPL", "GOOGL", "MSFT"]
     initial_prices = {"AAPL": 150.0, "GOOGL": 2500.0, "MSFT": 300.0}
     
@@ -72,11 +71,10 @@ def main():
         engine.add_symbol(symbol, initial_prices[symbol])
         print(f"Added {symbol} with initial price ${initial_prices[symbol]:.2f}")
     
-    # Add participants (traders)
+    # add participants (traders)
     participants = {
         "momentum_trader_1": 100000.0,  # $100k starting cash
         "momentum_trader_2": 100000.0,  # $100k starting cash
-        "market_maker": 1000000.0       # $1M starting cash for liquidity
     }
     
     engine.add_participants(participants)
@@ -87,7 +85,7 @@ def main():
         participant_id="momentum_trader_1",
         symbols=symbols,
         lookback_period=15,
-        momentum_threshold=0.00015,  # .15% threshold
+        momentum_threshold=0.00015,  # .015% threshold
         position_size=10
     )
     
@@ -98,45 +96,47 @@ def main():
         momentum_threshold=0.025,  # 2.5% threshold
         position_size=15
     )
-
-    strategy3 = MarketMakerStrategy(
-        participant_id="market_maker",
-        symbols=symbols,
-        spread_bps=30,
-        quote_size=50,
-        max_position=500,
-        inventory_skew=0.3
-    )
     
     engine.add_strategy(strategy1)
     engine.add_strategy(strategy2)
-    engine.add_strategy(strategy3)
     
     print(f"Added {len(engine.strategies)} trading strategies")
+
+    print(f"\nSetting up initial inventory for market makers...")
+    engine.add_market_maker(1000000.0, {
+        "AAPL": 200,
+        "GOOGL": 50,
+        "MSFT": 150
+    })
+    engine.add_market_maker(1000000.0, {
+        "AAPL": 100,
+        "GOOGL": 250,
+        "MSFT": 50
+    })
     
-    # Add event callbacks for monitoring
+    # add event callbacks for monitoring
     def on_trade_callback(trade):
-        print(f"\n📈 TRADE: {trade.quantity} {trade.symbol} at ${trade.price:.2f}")
+        print(f"\n  TRADE: {trade.quantity} {trade.symbol} at ${trade.price:.2f}")
     
     def on_market_data_callback(market_data):
-        # Only print every 10th update to avoid spam
+        # only print every 10th update to avoid spam
         if hasattr(on_market_data_callback, 'counter'):
             on_market_data_callback.counter += 1
         else:
             on_market_data_callback.counter = 1
             
         if on_market_data_callback.counter % 10 == 0:
-            print(f"📊 {market_data.symbol}: ${market_data.price:.2f}")
+            print(f"  {market_data.symbol}: ${market_data.price:.2f}")
     
     engine.add_callback('on_trade', on_trade_callback)
     engine.add_callback('on_market_data', on_market_data_callback)
     
-    # Start simulation
+    # start simulation
     print("\nStarting simulation...")
     engine.start()
     
-    # Let simulation run for 15 seconds
-    simulation_duration = 15.0
+    # let simulation run for 15 seconds
+    simulation_duration = 5.0
     print(f"Running simulation for {simulation_duration} seconds...")
     
     try:
@@ -144,23 +144,23 @@ def main():
     except KeyboardInterrupt:
         print("\nSimulation interrupted by user")
     
-    # Stop simulation
+    # stop simulation
     print("\nStopping simulation...")
     engine.stop()
     
-    # Print final results
+    # print final results
     print_portfolio_summary(engine)
     print_market_summary(engine)
     print_trade_history(engine)
     
-    # Calculate performance metrics
+    # calculate performance metrics
     print("\n" + "="*60)
     print("PERFORMANCE METRICS")
     print("="*60)
     
     summary = engine.get_portfolio_summary()
     for participant_id, data in summary.items():
-        if participant_id != "market_maker":  # Skip market maker
+        if participant_id[0:14] != "__market_maker":  # skip market maker
             initial_value = participants[participant_id]
             final_value = data['portfolio_value']
             returns = (final_value - initial_value) / initial_value * 100
@@ -168,24 +168,24 @@ def main():
             print(f"  Initial Value: ${initial_value:.2f}")
             print(f"  Final Value: ${final_value:.2f}")
             print(f"  Returns: {returns:.2f}%")
-            print(f"  Total Trades: {len([t for t in engine.get_trade_history() if t.buyer_id == participant_id or t.seller_id == participant_id])}")
+            print(f"  Total Trades: {len([t for t in engine.get_trade_history() if t.buy_order_id == participant_id or t.sell_order_id == participant_id])}")
     
-    # Print market maker statistics
+    # print market maker statistics
     print("\n" + "="*60)
     print("MARKET MAKER STATISTICS")
     print("="*60)
     
-    # Get market maker strategy
-    market_maker_strategy = None
+    # get market maker strategy
+    market_maker_strategies = {}
     for strategy in engine.strategies:
-        if strategy.participant_id == "market_maker":
-            market_maker_strategy = strategy
-            break
+        if strategy.participant_id[0:14] == "__market_maker":
+            market_maker_strategies[strategy.participant_id] = strategy
     
-    if market_maker_strategy and hasattr(market_maker_strategy, 'get_market_making_stats'):
+    for id, market_maker_strategy in market_maker_strategies.items():
         mm_stats = market_maker_strategy.get_market_making_stats()
+        print("\nStats for " + id + ":")
         for symbol, stats in mm_stats.items():
-            print(f"\n{symbol}:")
+            print(f"{symbol}:")
             print(f"  Position: {stats['position']}")
             print(f"  Total Trades: {stats['total_trades']}")
             print(f"  Buy Trades: {stats['buy_trades']}")

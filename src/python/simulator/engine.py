@@ -3,6 +3,7 @@ import time
 from typing import Dict, List, Optional, Callable
 import simulator_core as core
 from .strategies.base import BaseStrategy
+from .strategies.market_maker import MarketMakerStrategy
 
 class SimulationEngine:
     """Main simulation engine that orchestrates all components"""
@@ -20,6 +21,7 @@ class SimulationEngine:
             'on_market_data': [],
             'on_order_rejection': []
         }
+        self.market_makers = 0
         
     def add_symbol(self, symbol: str, initial_price: float):
         """Add a symbol to the simulation"""
@@ -49,17 +51,39 @@ class SimulationEngine:
         for order_book in self.order_books.values():
             order_book.set_portfolio(self.portfolio)
     
+    def add_market_maker(self, initial_cash: float, initial_positions: dict):
+        """Add a market maker to provide liquidity"""
+
+        self.market_makers += 1
+        
+        id = "__market_maker_" + str(self.market_makers)
+
+        self.add_participants({id: initial_cash})
+
+        self.set_initial_positions(id, initial_positions)
+
+        market_maker = MarketMakerStrategy(
+            participant_id=id,
+            symbols=self.symbols,
+            spread_bps=30,
+            quote_size=50,
+            max_position=500,
+            inventory_skew=0.3
+        )
+
+        self.add_strategy(market_maker)
+    
     def set_initial_positions(self, participant_id: str, positions: dict):
         """
         Set initial positions for a participant
         positions: dict of {symbol: quantity}
         """
-        
+
         if not self.portfolio:
             raise ValueError("Portfolio not initialized")
         
         for symbol, quantity in positions.items():
-            current_price = self.market_data_engine.get_price(symbol) if self.market_data_engine else 0.0
+            current_price = self.market_data_engine.get_current_price(symbol) if self.market_data_engine else 0.0
             self.portfolio.set_initial_position(participant_id, symbol, quantity, current_price)
     
     def add_strategy(self, strategy: BaseStrategy):
