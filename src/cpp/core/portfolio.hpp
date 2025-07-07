@@ -37,6 +37,9 @@ private:
         double cash;
         double initial_cash;
 
+        ParticipantData():
+            cash(0.0), initial_cash(0.0) {}
+
         ParticipantData(double initial):
             cash(initial), initial_cash(initial) {}
     };

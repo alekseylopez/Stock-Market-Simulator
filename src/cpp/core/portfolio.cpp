@@ -1,6 +1,7 @@
 #include "portfolio.hpp"
 
 #include <stdexcept>
+#include <iostream>
 
 namespace simulator
 {
@@ -68,9 +69,18 @@ double Portfolio::get_pnl(const ParticipantId& participant_id, const std::unorde
     std::lock_guard<std::mutex> lock(portfolio_mutex_);
     
     const auto& participant = get_participant_data(participant_id);
-    double total_value = get_portfolio_value(participant_id, prices);
 
-    return total_value - participant.initial_cash;
+    double position_value = 0.0;
+
+    for(const auto& [symbol, quantity] : participant.positions)
+    {
+        const auto& it = prices.find(symbol);
+
+        if(it != prices.end())
+            position_value += it->second * quantity;
+    }
+
+    return position_value + participant.cash - participant.initial_cash;
 }
 
 double Portfolio::get_portfolio_value(const ParticipantId& participant_id, const std::unordered_map<Symbol, Price>& prices) const
@@ -78,6 +88,7 @@ double Portfolio::get_portfolio_value(const ParticipantId& participant_id, const
     std::lock_guard<std::mutex> lock(portfolio_mutex_);
     
     const auto& participant = get_participant_data(participant_id);
+
     double position_value = 0.0;
 
     for(const auto& [symbol, quantity] : participant.positions)

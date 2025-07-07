@@ -8,6 +8,8 @@
 #include <map>
 #include <queue>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 
 namespace simulator
 {
@@ -32,6 +34,14 @@ public:
 
     void update_market_price(Price price);
 
+    struct BookDepth
+    {
+        std::vector<std::pair<Price, Quantity>> bids;
+        std::vector<std::pair<Price, Quantity>> asks;
+    };
+
+    BookDepth get_book_depth(size_t levels = 5) const;
+
 private:
     Symbol symbol_;
     std::map<Price, std::queue<Order>> buy_orders_;
@@ -41,25 +51,29 @@ private:
     std::shared_ptr<Portfolio> portfolio_;
     Price current_market_price_;
 
+    mutable std::shared_mutex book_mutex_;
+    mutable std::mutex callback_mutex_;
+    mutable std::mutex market_price_mutex_;
+
     // callbacks
     TradeCallback trade_callback_;
     OrderRejectionCallback rejection_callback_;
 
-    // order processing
-    bool execute_market_order(const Order& order);
-    bool execute_buy_market_order(const Order& order);
-    bool execute_sell_market_order(const Order& order);
-    void add_limit_order(const Order& order);
+    // order processing (assumes book_mutex_ is held)
+    bool execute_market_order_unsafe(const Order& order);
+    bool execute_buy_market_order_unsafe(const Order& order);
+    bool execute_sell_market_order_unsafe(const Order& order);
+    void add_limit_order_unsafe(const Order& order);
 
-    // trade execution with portfolio updates
-    void match_orders();
-    void execute_trade(const Order& buyer_order, const Order& seller_order, Quantity quantity, Price price);
+    // trade execution
+    void match_orders_unsafe();
+    void execute_trade_unsafe(const Order& buyer_order, const Order& seller_order, Quantity quantity, Price price);
 
     // portfolio validation
     bool validate_order(const Order& order) const;
     bool validate_buy_order(const Order& order) const;
     bool validate_sell_order(const Order& order) const;
-    Price estimate_execution_price(const Order& order) const;
+    Price estimate_execution_price_unsafe(const Order& order) const;
 };
 
 }

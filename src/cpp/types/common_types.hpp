@@ -40,6 +40,17 @@ struct MarketData
         symbol(sym), price(p), volume(v), timestamp(ts), bid(p * 0.999), ask(p * 1.001) {}
 };
 
+class OrderIdGenerator
+{
+public:
+    static OrderId generate()
+    {
+        static std::atomic<int> counter{ 0 };
+
+        return "ORDER_" + std::to_string(++counter);
+    }
+};
+
 struct Order
 {
     OrderId id;
@@ -54,9 +65,8 @@ struct Order
     Order(const ParticipantId& p_id, const Symbol& sym, OrderSide s, Quantity qty, OrderType t = OrderType::MARKET, Price p = 0.0):
         participant_id(p_id), symbol(sym), side(s), quantity(qty), type(t), price(p)
     {
-        static std::atomic<int> counter{ 0 };
-
-        id = "ORDER_" + std::to_string(++counter);
+        id = OrderIdGenerator::generate();
+        
         timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
     }
 };
@@ -72,6 +82,11 @@ struct Trade
 
     Trade(const OrderId& buy_id, const OrderId& sell_id, const Symbol& sym, Quantity qty, Price p, Timestamp ts):
         buy_order_id(buy_id), sell_order_id(sell_id), symbol(sym), quantity(qty), price(p), timestamp(ts) {}
+    
+    double notional_value() const
+    {
+        return quantity * price;
+    }
 };
 
 }

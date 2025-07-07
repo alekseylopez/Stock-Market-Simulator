@@ -8,6 +8,8 @@
 #include <atomic>
 #include <thread>
 #include <random>
+#include <mutex>
+#include <shared_mutex>
 
 namespace simulator
 {
@@ -18,6 +20,7 @@ public:
     using DataCallBack = std::function<void(const MarketData&)>;
 
     MarketDataEngine();
+    ~MarketDataEngine();
 
     void add_symbol(const Symbol& symbol, Price initial_price);
     void set_callback(DataCallBack callback);
@@ -27,6 +30,8 @@ public:
 
     Price get_current_price(const Symbol& symbol) const;
 
+    std::unordered_map<Symbol, Price> get_all_prices() const;
+
 private:
     std::unordered_map<Symbol, Price> prices_;
     std::unordered_map<Symbol, double> volatilities_;
@@ -34,6 +39,10 @@ private:
     std::thread thread_;
     std::mt19937 rng_;
     DataCallBack callback_;
+
+    mutable std::shared_mutex prices_mutex_;
+    mutable std::mutex callback_mutex_;
+    mutable std::mutex rng_mutex_;
 
     void generate_data();
 };

@@ -10,16 +10,22 @@ OrderBook::OrderBook(const Symbol& symbol):
 
 void OrderBook::set_trade_callback(TradeCallback callback)
 {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+
     trade_callback_ = callback;
 }
 
 void OrderBook::set_rejection_callback(OrderRejectionCallback callback)
 {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+
     rejection_callback_ = callback;
 }
 
 void OrderBook::set_portfolio(std::shared_ptr<Portfolio> portfolio)
 {
+    std::unique_lock<std::shared_mutex> lock(book_mutex_);
+
     portfolio_ = portfolio;
 }
 
@@ -27,32 +33,42 @@ bool OrderBook::add_order(const Order& order)
 {
     if(!validate_order(order))
     {
+        std::lock_guard<std::mutex> callback_lock(callback_mutex_);
+
         if(rejection_callback_)
             rejection_callback_(order, "Insufficient funds or position for participant: " + order.participant_id);
 
         return false;
     }
 
+    std::unique_lock<std::shared_mutex> lock(book_mutex_);
+
     if(order.type == OrderType::MARKET)
-        return execute_market_order(order);
+        return execute_market_order_unsafe(order);
     else
-        add_limit_order(order);
+        add_limit_order_unsafe(order);
     
     return true;
 }
 
 Price OrderBook::get_bid_price() const
 {
+    std::shared_lock<std::shared_mutex> lock(book_mutex_);
+
     return buy_orders_.empty() ? 0.0 : buy_orders_.rbegin()->first;
 }
 
 Price OrderBook::get_ask_price() const
 {
+    std::shared_lock<std::shared_mutex> lock(book_mutex_);
+
     return sell_orders_.empty() ? 0.0 : sell_orders_.begin()->first;
 }
 
 Price OrderBook::get_mid_price() const
 {
+    std::shared_lock<std::shared_mutex> lock(book_mutex_);
+
     Price bid = get_bid_price();
     Price ask = get_ask_price();
 
@@ -61,21 +77,68 @@ Price OrderBook::get_mid_price() const
 
 void OrderBook::update_market_price(Price price)
 {
+    std::lock_guard<std::mutex> lock(market_price_mutex_);
+
     current_market_price_ = price;
 }
 
-bool OrderBook::execute_market_order(const Order& order)
+OrderBook::BookDepth OrderBook::get_book_depth(size_t levels) const
 {
-    if(order.side == OrderSide::BUY)
-        return execute_buy_market_order(order);
-    else
-        return execute_sell_market_order(order);
+    std::shared_lock<std::shared_mutex> lock(book_mutex_);
+
+    BookDepth depth;
+
+    // bid side
+    auto bid_it = buy_orders_.rbegin();
+    for(size_t i = 0; i < levels && bid_it != buy_orders_.rend(); ++i, ++bid_it)
+    {
+        Quantity total_qty = 0;
+
+        std::queue<Order> temp_queue = bid_it->second;
+
+        while(!temp_queue.empty())
+        {
+            total_qty += temp_queue.front().quantity;
+            temp_queue.pop();
+        }
+
+        depth.bids.emplace_back(bid_it->first, total_qty);
+    }
+    
+    // ask side
+    auto ask_it = sell_orders_.begin();
+    for(size_t i = 0; i < levels && ask_it != sell_orders_.end(); ++i, ++ask_it)
+    {
+        Quantity total_qty = 0;
+
+        std::queue<Order> temp_queue = ask_it->second;
+
+        while(!temp_queue.empty())
+        {
+            total_qty += temp_queue.front().quantity;
+            temp_queue.pop();
+        }
+
+        depth.asks.emplace_back(ask_it->first, total_qty);
+    }
+
+    return depth;
 }
 
-bool OrderBook::execute_buy_market_order(const Order& order)
+bool OrderBook::execute_market_order_unsafe(const Order& order)
+{
+    if(order.side == OrderSide::BUY)
+        return execute_buy_market_order_unsafe(order);
+    else
+        return execute_sell_market_order_unsafe(order);
+}
+
+bool OrderBook::execute_buy_market_order_unsafe(const Order& order)
 {
     if(sell_orders_.empty())
     {
+        std::lock_guard<std::mutex> callback_lock(callback_mutex_);
+
         if(rejection_callback_)
             rejection_callback_(order, "No liquidity available");
         
@@ -94,7 +157,7 @@ bool OrderBook::execute_buy_market_order(const Order& order)
 
         // create trade
         modified_order.quantity = trade_quantity;
-        execute_trade(modified_order, sell_order, trade_quantity, price);
+        execute_trade_unsafe(modified_order, sell_order, trade_quantity, price);
 
         remaining -= trade_quantity;
         sell_order.quantity -= trade_quantity;
@@ -111,10 +174,12 @@ bool OrderBook::execute_buy_market_order(const Order& order)
     return true;
 }
 
-bool OrderBook::execute_sell_market_order(const Order& order)
+bool OrderBook::execute_sell_market_order_unsafe(const Order& order)
 {
     if(buy_orders_.empty())
     {
+        std::lock_guard<std::mutex> callback_lock(callback_mutex_);
+
         if(rejection_callback_)
             rejection_callback_(order, "No liquidity available");
         
@@ -133,7 +198,7 @@ bool OrderBook::execute_sell_market_order(const Order& order)
 
         // create trade
         modified_order.quantity = trade_quantity;
-        execute_trade(buy_order, modified_order, trade_quantity, price);
+        execute_trade_unsafe(buy_order, modified_order, trade_quantity, price);
 
         remaining -= trade_quantity;
         buy_order.quantity -= trade_quantity;
@@ -143,24 +208,24 @@ bool OrderBook::execute_sell_market_order(const Order& order)
             orders.pop();
 
             if(orders.empty())
-                buy_orders_.erase(buy_orders_.begin());
+                buy_orders_.erase(std::prev(buy_orders_.end()));
         }
     }
 
     return true;
 }
 
-void OrderBook::add_limit_order(const Order& order)
+void OrderBook::add_limit_order_unsafe(const Order& order)
 {
     if(order.side == OrderSide::BUY)
         buy_orders_[order.price].push(order);
     else
         sell_orders_[order.price].push(order);
     
-    match_orders();
+    match_orders_unsafe();
 }
 
-void OrderBook::match_orders()
+void OrderBook::match_orders_unsafe()
 {
     while(!buy_orders_.empty() && !sell_orders_.empty())
     {
@@ -173,10 +238,10 @@ void OrderBook::match_orders()
             auto& sell_order = sell_orders_.begin()->second.front();
 
             Quantity trade_quantity = std::min(buy_order.quantity, sell_order.quantity);
-            Price trade_price = best_ask; // improvement for buyer
+            Price trade_price = best_ask; // standard behavior
 
             // create trade
-            execute_trade(buy_order, sell_order, trade_quantity, trade_price);
+            execute_trade_unsafe(buy_order, sell_order, trade_quantity, trade_price);
 
             buy_order.quantity -= trade_quantity;
             sell_order.quantity -= trade_quantity;
@@ -204,9 +269,9 @@ void OrderBook::match_orders()
     }
 }
 
-void OrderBook::execute_trade(const Order& buyer_order, const Order& seller_order, Quantity quantity, Price price)
+void OrderBook::execute_trade_unsafe(const Order& buyer_order, const Order& seller_order, Quantity quantity, Price price)
 {
-    auto timestamp = std::chrono::duration_cast<Timestamp>(std::chrono::system_clock::now().time_since_epoch());
+    auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
     Trade trade(buyer_order.id, seller_order.id, symbol_, quantity, price, timestamp);
 
@@ -215,6 +280,8 @@ void OrderBook::execute_trade(const Order& buyer_order, const Order& seller_orde
         portfolio_->execute_trade(buyer_order.participant_id, trade, OrderSide::BUY);
         portfolio_->execute_trade(seller_order.participant_id, trade, OrderSide::SELL);
     }
+
+    std::lock_guard<std::mutex> callback_lock(callback_mutex_);
 
     if(trade_callback_)
         trade_callback_(trade);
@@ -233,7 +300,13 @@ bool OrderBook::validate_order(const Order& order) const
 
 bool OrderBook::validate_buy_order(const Order& order) const
 {
-    Price execution_price = estimate_execution_price(order);
+    Price execution_price;
+
+    {
+        std::shared_lock<std::shared_mutex> lock(book_mutex_);
+
+        execution_price = estimate_execution_price_unsafe(order);
+    }
 
     if(execution_price == 0.0)
         return order.type == OrderType::LIMIT;
@@ -248,12 +321,21 @@ bool OrderBook::validate_sell_order(const Order& order) const
     return portfolio_->can_sell(order.participant_id, order.symbol, order.quantity);
 }
 
-Price OrderBook::estimate_execution_price(const Order& order) const
+Price OrderBook::estimate_execution_price_unsafe(const Order& order) const
 {
     if(order.side == OrderSide::BUY)
-        return sell_orders_.empty() ? current_market_price_ : sell_orders_.begin()->first;
-    else
-        return buy_orders_.empty() ? current_market_price_ : buy_orders_.rbegin()->first;
+    {
+        if(!sell_orders_.empty())
+            return sell_orders_.begin()->first;
+    } else
+    {
+        if(!buy_orders_.empty())
+            return buy_orders_.rbegin()->first;
+    }
+    
+    std::lock_guard<std::mutex> lock(market_price_mutex_);
+
+    return current_market_price_;
 }
 
 }
