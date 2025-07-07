@@ -1,7 +1,6 @@
 #include "portfolio.hpp"
 
 #include <stdexcept>
-#include <iostream>
 
 namespace simulator
 {
@@ -17,8 +16,6 @@ void Portfolio::add_participant(const ParticipantId& participant_id, double init
     std::lock_guard<std::mutex> lock(portfolio_mutex_);
     participants_[participant_id] = ParticipantData(initial_cash);
 }
-
-
 
 bool Portfolio::can_buy(const ParticipantId& participant_id, const Symbol& symbol, Quantity qty, Price price)
 {
