@@ -49,6 +49,19 @@ class SimulationEngine:
         for order_book in self.order_books.values():
             order_book.set_portfolio(self.portfolio)
     
+    def set_initial_positions(self, participant_id: str, positions: dict):
+        """
+        Set initial positions for a participant
+        positions: dict of {symbol: quantity}
+        """
+        
+        if not self.portfolio:
+            raise ValueError("Portfolio not initialized")
+        
+        for symbol, quantity in positions.items():
+            current_price = self.market_data_engine.get_price(symbol) if self.market_data_engine else 0.0
+            self.portfolio.set_initial_position(participant_id, symbol, quantity, current_price)
+    
     def add_strategy(self, strategy: BaseStrategy):
         """Add a trading strategy"""
 
