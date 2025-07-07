@@ -45,6 +45,10 @@ class MomentumStrategy(BaseStrategy):
         elif momentum < -self.momentum_threshold:
             signal = "SELL"
         
+        # reset last signal on neutral momentum
+        if not signal:
+            self.last_signal[symbol] = None
+        
         # execute trades based on signal
         if signal and signal != self.last_signal[symbol]:
             self._execute_signal(symbol, signal, current_position)

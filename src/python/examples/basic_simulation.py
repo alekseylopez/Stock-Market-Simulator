@@ -119,7 +119,7 @@ def main():
         engine.add_symbol(symbol, initial_prices[symbol])
         print(f"Added {symbol} with initial price ${initial_prices[symbol]:.2f}")
     
-    # add participants (traders)
+    # add participants
     participants = {
         "momentum_trader_1": 100000.0,  # $100k starting cash
         "momentum_trader_2": 100000.0,  # $100k starting cash
@@ -128,7 +128,7 @@ def main():
     engine.add_participants(participants)
     print(f"\nAdded {len(participants)} participants")
     
-    # Create and add momentum strategies
+    # create and add momentum strategies
     strategy1 = MomentumStrategy(
         participant_id="momentum_trader_1",
         symbols=symbols,
@@ -183,8 +183,8 @@ def main():
     print("\nStarting simulation...")
     engine.start()
     
-    # let simulation run for 15 seconds
-    simulation_duration = 5.0
+    # let simulation run for 10 seconds
+    simulation_duration = 10.0
     print(f"Running simulation for {simulation_duration} seconds...")
     
     try:
