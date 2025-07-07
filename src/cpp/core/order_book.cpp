@@ -51,6 +51,53 @@ bool OrderBook::add_order(const Order& order)
     return true;
 }
 
+bool OrderBook::cancel_order(const OrderId& order_id)
+{
+    std::unique_lock<std::shared_mutex> lock(book_mutex_);
+
+    auto active_it = active_orders_.find(order_id);
+    if(active_it == active_orders_.end())
+        return false; // order not found or already filled/cancelled
+    
+    auto location_it = order_locations_.find(order_id);
+    if(location_it == order_locations_.end())
+    {
+        // clean up inconsistency
+        active_orders_.erase(active_it);
+
+        return false;
+    }
+    
+    Price price = location_it->second.first;
+    OrderSide side = location_it->second.second;
+    
+    bool removed = false;
+
+    if(side == OrderSide::BUY)
+    {
+        removed = remove_order_from_queue(buy_orders_[price], order_id);
+
+        if(buy_orders_[price].empty())
+            buy_orders_.erase(price);
+    } else
+    {
+        removed = remove_order_from_queue(sell_orders_[price], order_id);
+
+        if(sell_orders_[price].empty())
+            sell_orders_.erase(price);
+    }
+    
+    if(removed)
+    {
+        active_orders_.erase(active_it);
+        order_locations_.erase(location_it);
+
+        return true;
+    }
+    
+    return false;
+}
+
 Price OrderBook::get_bid_price() const
 {
     std::shared_lock<std::shared_mutex> lock(book_mutex_);
@@ -217,6 +264,9 @@ bool OrderBook::execute_sell_market_order_unsafe(const Order& order)
 
 void OrderBook::add_limit_order_unsafe(const Order& order)
 {
+    active_orders_[order.id] = order;
+    order_locations_[order.id] = { order.price, order.side };
+
     if(order.side == OrderSide::BUY)
         buy_orders_[order.price].push(order);
     else
@@ -281,10 +331,52 @@ void OrderBook::execute_trade_unsafe(const Order& buyer_order, const Order& sell
         portfolio_->execute_trade(seller_order.participant_id, trade, OrderSide::SELL);
     }
 
+    if(buyer_order.quantity == 0)
+    {
+        active_orders_.erase(buyer_order.id);
+        order_locations_.erase(buyer_order.id);
+    } else
+    {
+        // update remaining quantity in tracking
+        active_orders_[buyer_order.id].quantity = buyer_order.quantity;
+    }
+    
+    if(seller_order.quantity == 0)
+    {
+        active_orders_.erase(seller_order.id);
+        order_locations_.erase(seller_order.id);
+    } else
+    {
+        // update remaining quantity in tracking
+        active_orders_[seller_order.id].quantity = seller_order.quantity;
+    }
+
     std::lock_guard<std::mutex> callback_lock(callback_mutex_);
 
     if(trade_callback_)
         trade_callback_(trade);
+}
+
+bool OrderBook::remove_order_from_queue(std::queue<Order>& orders, const OrderId& order_id)
+{
+    std::queue<Order> temp_queue;
+    bool found = false;
+    
+    while(!orders.empty())
+    {
+        Order order = orders.front();
+        orders.pop();
+        
+        if(order.id == order_id)
+            found = true;
+        else
+            temp_queue.push(order);
+    }
+    
+    // queue without the cancelled order
+    orders = std::move(temp_queue);
+
+    return found;
 }
 
 bool OrderBook::validate_order(const Order& order) const

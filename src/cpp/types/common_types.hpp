@@ -62,6 +62,8 @@ struct Order
     Price price;
     Timestamp timestamp;
 
+    Order() {}
+
     Order(const ParticipantId& p_id, const Symbol& sym, OrderSide s, Quantity qty, OrderType t = OrderType::MARKET, Price p = 0.0):
         participant_id(p_id), symbol(sym), type(t), side(s), quantity(qty), price(p)
     {

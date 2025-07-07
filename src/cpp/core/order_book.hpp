@@ -27,6 +27,7 @@ public:
     void set_portfolio(std::shared_ptr<Portfolio> portfolio);
 
     bool add_order(const Order& order);
+    bool cancel_order(const OrderId& order_id);
 
     Price get_bid_price() const;
     Price get_ask_price() const;
@@ -46,6 +47,9 @@ private:
     Symbol symbol_;
     std::map<Price, std::queue<Order>> buy_orders_;
     std::map<Price, std::queue<Order>> sell_orders_;
+
+    std::unordered_map<OrderId, Order> active_orders_;
+    std::unordered_map<OrderId, std::pair<Price, OrderSide>> order_locations_;
 
     // portfolio
     std::shared_ptr<Portfolio> portfolio_;
@@ -68,6 +72,9 @@ private:
     // trade execution
     void match_orders_unsafe();
     void execute_trade_unsafe(const Order& buyer_order, const Order& seller_order, Quantity quantity, Price price);
+
+    // cancelling orders
+    bool remove_order_from_queue(std::queue<Order>& orders, const OrderId& order_id);
 
     // portfolio validation
     bool validate_order(const Order& order) const;
