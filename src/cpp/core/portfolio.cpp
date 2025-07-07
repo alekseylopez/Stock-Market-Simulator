@@ -17,6 +17,26 @@ void Portfolio::add_participant(const ParticipantId& participant_id, double init
     participants_[participant_id] = ParticipantData(initial_cash);
 }
 
+void Portfolio::set_initial_position(const ParticipantId& participant_id, const Symbol& symbol, int quantity, double cost_basis = 0.0)
+{
+    std::lock_guard<std::mutex> lock(portfolio_mutex_);
+
+    ParticipantData& participant = participants_[participant_id];
+        
+    // set position
+    participant.positions[symbol] = quantity;
+    
+    // adjust cash for cost basis
+    if(cost_basis > 0.0)
+    {
+        double total_cost = quantity * cost_basis;
+        participant.cash -= total_cost;
+    }
+    
+    // update initial values for P&L calculation
+    participant.initial_cash = participant.cash;
+}
+
 bool Portfolio::can_buy(const ParticipantId& participant_id, const Symbol& symbol, Quantity qty, Price price)
 {
     std::lock_guard<std::mutex> lock(portfolio_mutex_);

@@ -16,6 +16,8 @@ public:
 
     void add_participant(const ParticipantId& participant_id, double initial_cash);
 
+    void set_initial_position(const ParticipantId& participant_id, const Symbol& symbol, int quantity, double cost_basis = 0.0);
+
     bool can_buy(const ParticipantId& participant_id, const Symbol& symbol, Quantity qty, Price price);
     bool can_sell(const ParticipantId& participant_id, const Symbol& symbol, Quantity qty);
 
