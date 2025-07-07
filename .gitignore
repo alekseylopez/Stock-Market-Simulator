@@ -1,38 +1,37 @@
-# Prerequisites
-*.d
+# Virtual environments
+.venv/
+env/
+venv/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
 
-# Precompiled Headers
-*.gch
-*.pch
+# Build and distribution folders
+build/
+dist/
+*.egg-info/
 
-# Compiled Dynamic libraries
+# Compiled extension modules
 *.so
 *.dylib
-*.dll
+*.pyd
 
-# Fortran module files
-*.mod
-*.smod
+# Editor / IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.sw?
+*~
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# VS Code
-.vscode
-
-# DS Store
+# macOS Finder files
 .DS_Store
+
+#  pip metadata
+pip-wheel-metadata/
+
+# Scripts and files used
+*.sh
+requirements.txt

@@ -63,7 +63,7 @@ struct Order
     Timestamp timestamp;
 
     Order(const ParticipantId& p_id, const Symbol& sym, OrderSide s, Quantity qty, OrderType t = OrderType::MARKET, Price p = 0.0):
-        participant_id(p_id), symbol(sym), side(s), quantity(qty), type(t), price(p)
+        participant_id(p_id), symbol(sym), type(t), side(s), quantity(qty), price(p)
     {
         id = OrderIdGenerator::generate();
         
