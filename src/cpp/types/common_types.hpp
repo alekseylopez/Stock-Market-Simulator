@@ -81,9 +81,11 @@ struct Trade
     Quantity quantity;
     Price price;
     Timestamp timestamp;
+    ParticipantId buyer_id;
+    ParticipantId seller_id;
 
-    Trade(const OrderId& buy_id, const OrderId& sell_id, const Symbol& sym, Quantity qty, Price p, Timestamp ts):
-        buy_order_id(buy_id), sell_order_id(sell_id), symbol(sym), quantity(qty), price(p), timestamp(ts) {}
+    Trade(const OrderId& buy_id, const OrderId& sell_id, const Symbol& sym, Quantity qty, Price p, Timestamp ts, ParticipantId buyer, ParticipantId seller):
+        buy_order_id(buy_id), sell_order_id(sell_id), symbol(sym), quantity(qty), price(p), timestamp(ts), buyer_id(buyer), seller_id(seller) {}
     
     double notional_value() const
     {

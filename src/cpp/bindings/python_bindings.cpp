@@ -64,13 +64,15 @@ PYBIND11_MODULE(simulator_core, m)
     
     // Trade struct
     py::class_<Trade>(m, "Trade")
-        .def(py::init<const OrderId&, const OrderId&, const Symbol&, Quantity, Price, Timestamp>())
+        .def(py::init<const OrderId&, const OrderId&, const Symbol&, Quantity, Price, Timestamp, ParticipantId, ParticipantId>())
         .def_readwrite("buy_order_id", &Trade::buy_order_id)
         .def_readwrite("sell_order_id", &Trade::sell_order_id)
         .def_readwrite("symbol", &Trade::symbol)
         .def_readwrite("quantity", &Trade::quantity)
         .def_readwrite("price", &Trade::price)
         .def_readwrite("timestamp", &Trade::timestamp)
+        .def_readwrite("buyer_id", &Trade::buyer_id)
+        .def_readwrite("seller_id", &Trade::seller_id)
         .def("notional_value", &Trade::notional_value)
         .def("__repr__", [](const Trade& t)
         {

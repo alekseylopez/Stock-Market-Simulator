@@ -33,10 +33,7 @@ bool OrderBook::add_order(const Order& order)
 {
     if(!validate_order(order))
     {
-        std::lock_guard<std::mutex> callback_lock(callback_mutex_);
-
-        if(rejection_callback_)
-            rejection_callback_(order, "Insufficient funds or position for participant: " + order.participant_id);
+        queue_rejection_callback(order, "Insufficient funds or position for participant: " + order.participant_id);
 
         return false;
     }
@@ -44,9 +41,20 @@ bool OrderBook::add_order(const Order& order)
     std::unique_lock<std::shared_mutex> lock(book_mutex_);
 
     if(order.type == OrderType::MARKET)
-        return execute_market_order_unsafe(order);
-    else
+    {
+        bool result = execute_market_order_unsafe(order);
+
+        lock.unlock();
+        process_queued_callbacks();
+
+        return result;
+    } else
+    {
         add_limit_order_unsafe(order);
+
+        lock.unlock();
+        process_queued_callbacks();
+    }
     
     return true;
 }
@@ -172,6 +180,59 @@ OrderBook::BookDepth OrderBook::get_book_depth(size_t levels) const
     return depth;
 }
 
+void OrderBook::queue_trade_callback(const Trade& trade)
+{
+    std::lock_guard<std::mutex> lock(callback_queue_mutex_);
+
+    queued_trades_.push_back(trade);
+}
+
+void OrderBook::queue_rejection_callback(const Order& order, const std::string& reason)
+{
+    std::lock_guard<std::mutex> lock(callback_queue_mutex_);
+
+    queued_rejections_.emplace_back(order, reason);
+}
+
+void OrderBook::process_queued_callbacks()
+{
+    std::vector<Trade> trades_to_process;
+    std::vector<std::pair<Order, std::string>> rejections_to_process;
+    
+    // move queued callbacks to local vectors
+    {
+        std::lock_guard<std::mutex> lock(callback_queue_mutex_);
+
+        trades_to_process = std::move(queued_trades_);
+        rejections_to_process = std::move(queued_rejections_);
+
+        queued_trades_.clear();
+        queued_rejections_.clear();
+    }
+
+    if(portfolio_)
+    {
+        for(const auto& trade : trades_to_process)
+        {
+            portfolio_->execute_trade(trade.buyer_id, trade, OrderSide::BUY);
+            portfolio_->execute_trade(trade.seller_id, trade, OrderSide::SELL);
+        }
+    }
+    
+    // process callbacks without holding any locks
+    {
+        // process trade callbacks
+        if(trade_callback_)
+            for(const auto& trade : trades_to_process)
+                trade_callback_(trade);
+        
+        // process rejection callbacks
+        if(rejection_callback_)
+            for(const auto& [order, reason] : rejections_to_process)
+                rejection_callback_(order, reason);
+    }
+}
+
 bool OrderBook::execute_market_order_unsafe(const Order& order)
 {
     if(order.side == OrderSide::BUY)
@@ -184,10 +245,7 @@ bool OrderBook::execute_buy_market_order_unsafe(const Order& order)
 {
     if(sell_orders_.empty())
     {
-        std::lock_guard<std::mutex> callback_lock(callback_mutex_);
-
-        if(rejection_callback_)
-            rejection_callback_(order, "No liquidity available");
+        queue_rejection_callback(order, "No liquidity available");
         
         return false;
     }
@@ -225,10 +283,7 @@ bool OrderBook::execute_sell_market_order_unsafe(const Order& order)
 {
     if(buy_orders_.empty())
     {
-        std::lock_guard<std::mutex> callback_lock(callback_mutex_);
-
-        if(rejection_callback_)
-            rejection_callback_(order, "No liquidity available");
+        queue_rejection_callback(order, "No liquidity available");
         
         return false;
     }
@@ -323,13 +378,7 @@ void OrderBook::execute_trade_unsafe(const Order& buyer_order, const Order& sell
 {
     auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 
-    Trade trade(buyer_order.id, seller_order.id, symbol_, quantity, price, timestamp);
-
-    if(portfolio_)
-    {
-        portfolio_->execute_trade(buyer_order.participant_id, trade, OrderSide::BUY);
-        portfolio_->execute_trade(seller_order.participant_id, trade, OrderSide::SELL);
-    }
+    Trade trade(buyer_order.id, seller_order.id, symbol_, quantity, price, timestamp, buyer_order.participant_id, seller_order.participant_id);
 
     if(buyer_order.quantity == 0)
     {
@@ -351,10 +400,7 @@ void OrderBook::execute_trade_unsafe(const Order& buyer_order, const Order& sell
         active_orders_[seller_order.id].quantity = seller_order.quantity;
     }
 
-    std::lock_guard<std::mutex> callback_lock(callback_mutex_);
-
-    if(trade_callback_)
-        trade_callback_(trade);
+    queue_trade_callback(trade);
 }
 
 bool OrderBook::remove_order_from_queue(std::queue<Order>& orders, const OrderId& order_id)

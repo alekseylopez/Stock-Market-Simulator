@@ -63,6 +63,15 @@ private:
     TradeCallback trade_callback_;
     OrderRejectionCallback rejection_callback_;
 
+    mutable std::mutex callback_queue_mutex_;
+    std::vector<Trade> queued_trades_;
+    std::vector<std::pair<Order, std::string>> queued_rejections_;
+
+    // callback queuing
+    void queue_trade_callback(const Trade& trade);
+    void queue_rejection_callback(const Order& order, const std::string& reason);
+    void process_queued_callbacks();
+
     // order processing (assumes book_mutex_ is held)
     bool execute_market_order_unsafe(const Order& order);
     bool execute_buy_market_order_unsafe(const Order& order);
