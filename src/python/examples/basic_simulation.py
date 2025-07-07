@@ -53,8 +53,8 @@ def print_trade_history(engine):
         return
     
     for trade in trades:
-        print(f"  {trade.timestamp}: {trade.buy_order_id} bought {trade.quantity} {trade.symbol} "
-              f"from {trade.sell_order_id} at ${trade.price:.2f}")
+        print(f"  {trade.timestamp}: {trade.buyer_id} bought {trade.quantity} {trade.symbol} "
+              f"from {trade.seller_id} at ${trade.price:.2f}")
 
 def main():
     print("Starting Momentum Strategy Simulation")
