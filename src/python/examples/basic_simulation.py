@@ -106,7 +106,7 @@ def print_market_maker_statistics(engine):
 
 def main():
     print("Starting Momentum Strategy Simulation")
-    print("="*60)
+    print("=" * 60)
     
     # create simulation engine
     engine = SimulationEngine()
@@ -152,7 +152,7 @@ def main():
 
     print(f"\nSetting up initial inventory for market makers...")
     engine.add_market_maker(1000000.0, {
-        "AAPL": 200,
+        "AAPL": 300,
         "GOOGL": 50,
         "MSFT": 150
     })
