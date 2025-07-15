@@ -15,9 +15,9 @@ from simulator.strategies.momentum import MomentumStrategy
 def print_portfolio_summary(engine):
     """Print portfolio summary"""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PORTFOLIO SUMMARY")
-    print("="*60)
+    print("=" * 60)
     
     summary = engine.get_portfolio_summary()
     for participant_id, data in summary.items():
@@ -30,9 +30,9 @@ def print_portfolio_summary(engine):
 def print_market_summary(engine):
     """Print market summary"""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("MARKET SUMMARY")
-    print("="*60)
+    print("=" * 60)
     
     summary = engine.get_market_summary()
     for symbol, data in summary.items():
@@ -46,9 +46,9 @@ def print_market_summary(engine):
 def print_trade_history(engine):
     """Print trade history"""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TRADE HISTORY")
-    print("="*60)
+    print("=" * 60)
     
     trades = engine.get_trade_history()
     if not trades:
@@ -62,9 +62,9 @@ def print_trade_history(engine):
 def print_performance_metrics(engine, participants):
     """Calculate performance metrics"""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PERFORMANCE METRICS")
-    print("="*60)
+    print("=" * 60)
     
     summary = engine.get_portfolio_summary()
     for participant_id, data in summary.items():
@@ -83,7 +83,7 @@ def print_market_maker_statistics(engine):
 
     print("\n" + "="*60)
     print("MARKET MAKER STATISTICS")
-    print("="*60)
+    print("=" * 60)
     
     # get market maker strategy
     market_maker_strategies = {}
