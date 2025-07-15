@@ -81,7 +81,7 @@ def print_performance_metrics(engine, participants):
 def print_market_maker_statistics(engine):
     """Print market maker statistics"""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("MARKET MAKER STATISTICS")
     print("=" * 60)
     
